@@ -49,6 +49,13 @@ function App() {
     try {
       const response = await axios.get(`${BACKEND_URL}/api/games/${game.appid}/achievements`);
       setAchievements(response.data.achievements || []);
+      // Update selectedGame with header_image if available
+      if (response.data.header_image) {
+        setSelectedGame(prev => ({
+          ...prev,
+          header_image: response.data.header_image
+        }));
+      }
     } catch (err) {
       setError(err.response?.data?.detail || 'Error loading achievements');
     } finally {
@@ -66,6 +73,10 @@ function App() {
     setSelectedGame(null);
     setAchievements([]);
     setError('');
+  };
+
+  const handleImageError = (e) => {
+    e.target.style.display = 'none';
   };
 
   return (
@@ -116,20 +127,34 @@ function App() {
         {!selectedGame && searchResults.length > 0 && (
           <div className="max-w-4xl mx-auto mb-8">
             <h2 className="text-2xl font-bold text-white mb-6 text-center">Search Results</h2>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
               {searchResults.map((game) => (
                 <div
                   key={game.appid}
                   onClick={() => selectGame(game)}
-                  className="bg-white/10 backdrop-blur-lg rounded-xl p-6 cursor-pointer hover:bg-white/20 transition-all duration-300 border border-white/20 hover:border-white/40 hover:scale-105 hover:shadow-2xl"
+                  className="bg-white/10 backdrop-blur-lg rounded-xl overflow-hidden cursor-pointer hover:bg-white/20 transition-all duration-300 border border-white/20 hover:border-white/40 hover:scale-105 hover:shadow-2xl group"
                 >
-                  <h3 className="text-white font-semibold text-lg mb-2 line-clamp-2">{game.name}</h3>
-                  <p className="text-blue-200 text-sm">App ID: {game.appid}</p>
-                  <div className="mt-4 flex items-center text-blue-300">
-                    <span className="text-sm">View Achievements</span>
-                    <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
+                  {/* Game Image */}
+                  <div className="relative h-32 bg-gradient-to-r from-blue-600/50 to-purple-600/50 overflow-hidden">
+                    <img
+                      src={game.image}
+                      alt={game.name}
+                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                      onError={handleImageError}
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent"></div>
+                  </div>
+                  
+                  {/* Game Info */}
+                  <div className="p-6">
+                    <h3 className="text-white font-semibold text-lg mb-2 line-clamp-2">{game.name}</h3>
+                    <p className="text-blue-200 text-sm mb-4">App ID: {game.appid}</p>
+                    <div className="flex items-center text-blue-300 group-hover:text-white transition-colors duration-300">
+                      <span className="text-sm font-medium">View Achievements</span>
+                      <svg className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -159,19 +184,40 @@ function App() {
         {/* Achievements Display */}
         {selectedGame && !achievementsLoading && (
           <div className="max-w-6xl mx-auto">
-            {/* Game Header */}
-            <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 mb-8 shadow-2xl border border-white/20">
-              <div className="flex flex-col md:flex-row md:items-center justify-between">
-                <div>
-                  <h2 className="text-3xl font-bold text-white mb-2">{selectedGame.name}</h2>
-                  <p className="text-blue-200">App ID: {selectedGame.appid}</p>
-                  <p className="text-green-300 mt-2">{achievements.length} Achievements Found</p>
+            {/* Game Banner Header */}
+            <div className="bg-white/10 backdrop-blur-lg rounded-2xl overflow-hidden mb-8 shadow-2xl border border-white/20">
+              {/* Game Header Image */}
+              <div className="relative h-64 bg-gradient-to-r from-blue-600 to-purple-700 overflow-hidden">
+                <img
+                  src={selectedGame.header_image}
+                  alt={selectedGame.name}
+                  className="w-full h-full object-cover"
+                  onError={handleImageError}
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/30"></div>
+                
+                {/* Game Title Overlay */}
+                <div className="absolute bottom-0 left-0 right-0 p-8">
+                  <h2 className="text-4xl font-bold text-white mb-2 drop-shadow-lg">{selectedGame.name}</h2>
+                  <div className="flex flex-wrap items-center gap-4 text-white/90">
+                    <span className="bg-white/20 backdrop-blur px-3 py-1 rounded-full text-sm">
+                      App ID: {selectedGame.appid}
+                    </span>
+                    <span className="bg-green-500/20 backdrop-blur px-3 py-1 rounded-full text-sm">
+                      {achievements.length} Achievements
+                    </span>
+                  </div>
                 </div>
+                
+                {/* Back Button */}
                 <button
                   onClick={clearSelection}
-                  className="mt-4 md:mt-0 px-6 py-3 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 rounded-xl text-red-200 hover:text-white transition-all duration-300"
+                  className="absolute top-6 right-6 px-4 py-2 bg-black/50 hover:bg-black/70 backdrop-blur border border-white/30 rounded-lg text-white hover:text-white transition-all duration-300 flex items-center gap-2"
                 >
-                  ← Back to Search
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                  </svg>
+                  Back to Search
                 </button>
               </div>
             </div>
@@ -191,9 +237,7 @@ function App() {
                           src={achievement.icon}
                           alt={achievement.displayName}
                           className="w-16 h-16 rounded-lg flex-shrink-0 group-hover:scale-110 transition-transform duration-300"
-                          onError={(e) => {
-                            e.target.style.display = 'none';
-                          }}
+                          onError={handleImageError}
                         />
                       )}
                       <div className="flex-1 min-w-0">

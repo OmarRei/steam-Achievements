@@ -24,6 +24,7 @@ db = client[os.environ['DB_NAME']]
 # Steam API configuration
 STEAM_API_KEY = os.environ['STEAM_API_KEY']
 STEAM_BASE_URL = "https://api.steampowered.com"
+STEAM_CDN_BASE = "https://cdn.akamai.steamstatic.com/steam/apps"
 
 # Create the main app without a prefix
 app = FastAPI()
@@ -44,6 +45,8 @@ class StatusCheckCreate(BaseModel):
 class GameSearchResult(BaseModel):
     appid: int
     name: str
+    image: Optional[str] = None
+    header_image: Optional[str] = None
 
 class Achievement(BaseModel):
     name: str
@@ -57,10 +60,26 @@ class Achievement(BaseModel):
 class GameAchievements(BaseModel):
     appid: int
     gameName: str
+    header_image: Optional[str] = None
     achievements: List[Achievement]
 
 
 # Steam API Helper Functions
+async def get_game_details(appid: int) -> Optional[Dict]:
+    """Get game details from Steam Store API"""
+    try:
+        async with aiohttp.ClientSession() as session:
+            url = f"https://store.steampowered.com/api/appdetails?appids={appid}&l=english"
+            async with session.get(url) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    if str(appid) in data and data[str(appid)].get('success'):
+                        return data[str(appid)]['data']
+                return None
+    except Exception:
+        return None
+
+
 async def search_steam_games(query: str) -> List[GameSearchResult]:
     """Search for Steam games using the Steam Store API"""
     try:
@@ -73,9 +92,16 @@ async def search_steam_games(query: str) -> List[GameSearchResult]:
                     games = []
                     for item in data.get('items', [])[:20]:  # Limit to 20 results
                         if item.get('type') == 'app':
+                            # Generate Steam CDN image URLs
+                            appid = item['id']
+                            thumbnail_image = f"{STEAM_CDN_BASE}/{appid}/capsule_231x87.jpg"
+                            header_image = f"{STEAM_CDN_BASE}/{appid}/header.jpg"
+                            
                             games.append(GameSearchResult(
-                                appid=item['id'],
-                                name=item['name']
+                                appid=appid,
+                                name=item['name'],
+                                image=thumbnail_image,
+                                header_image=header_image
                             ))
                     return games
                 else:
@@ -111,10 +137,14 @@ async def get_game_achievements(appid: int) -> Optional[GameAchievements]:
                 available_stats = game_data.get('availableGameStats', {})
                 achievements_data = available_stats.get('achievements', [])
                 
+                # Generate header image URL
+                header_image = f"{STEAM_CDN_BASE}/{appid}/header.jpg"
+                
                 if not achievements_data:
                     return GameAchievements(
                         appid=appid,
                         gameName=game_name,
+                        header_image=header_image,
                         achievements=[]
                     )
                 
@@ -149,6 +179,7 @@ async def get_game_achievements(appid: int) -> Optional[GameAchievements]:
                 return GameAchievements(
                     appid=appid,
                     gameName=game_name,
+                    header_image=header_image,
                     achievements=achievements
                 )
                 
@@ -185,13 +216,26 @@ async def search_games(q: str):
         appid = int(q.strip())
         achievements = await get_game_achievements(appid)
         if achievements:
-            return [{"appid": appid, "name": achievements.gameName}]
+            # Generate image URLs for direct App ID search
+            thumbnail_image = f"{STEAM_CDN_BASE}/{appid}/capsule_231x87.jpg"
+            header_image = f"{STEAM_CDN_BASE}/{appid}/header.jpg"
+            return [{
+                "appid": appid, 
+                "name": achievements.gameName,
+                "image": thumbnail_image,
+                "header_image": header_image
+            }]
         else:
             raise HTTPException(status_code=404, detail="Game not found")
     
     # Text search
     games = await search_steam_games(q.strip())
-    return [{"appid": game.appid, "name": game.name} for game in games]
+    return [{
+        "appid": game.appid, 
+        "name": game.name, 
+        "image": game.image,
+        "header_image": game.header_image
+    } for game in games]
 
 @api_router.get("/games/{appid}/achievements")
 async def get_achievements(appid: int):
@@ -201,6 +245,9 @@ async def get_achievements(appid: int):
     if cached:
         # Remove MongoDB _id field
         cached.pop('_id', None)
+        # Add header image if not present (for old cached data)
+        if 'header_image' not in cached:
+            cached['header_image'] = f"{STEAM_CDN_BASE}/{appid}/header.jpg"
         return cached
     
     # Fetch from Steam API
